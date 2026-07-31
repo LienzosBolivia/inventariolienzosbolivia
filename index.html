@@ -233,7 +233,7 @@
             abrirModal(); 
         };
 
-        // 5. MODAL DE LISTA Y ENVÍO A DRIVE
+        // 5. MODAL DE LISTA, EDICIÓN Y ENVÍO A DRIVE
         window.abrirModal = function() {
             document.getElementById('modal-lista').style.display = 'flex';
             const contenedor = document.getElementById('lista-trabajo-ui');
@@ -258,13 +258,47 @@
                             <div class="h-name">${item.nombre} (${item.tamano.replace('x','*')})</div>
                             <div class="h-tipo">${textoTipo}</div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:15px;">
-                            <span class="h-qty">+${item.cantidad}</span>
-                            <button onclick="eliminarDeLista('${item.idUnico}')" style="background:none; border:none; padding:10px; font-size:22px; cursor:pointer;">🗑️</button>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <button onclick="ajustarCantidad('${item.idUnico}', -1)" style="background:#e2e8f0; color:#475569; border:none; padding:5px 12px; border-radius:6px; font-size:18px; font-weight:bold; cursor:pointer;">-</button>
+                            <span class="h-qty" style="min-width:30px; text-align:center;">${item.cantidad}</span>
+                            <button onclick="ajustarCantidad('${item.idUnico}', 1)" style="background:#e2e8f0; color:#475569; border:none; padding:5px 12px; border-radius:6px; font-size:18px; font-weight:bold; cursor:pointer;">+</button>
+                            <button onclick="eliminarDeLista('${item.idUnico}')" style="background:none; border:none; padding:5px; font-size:22px; cursor:pointer; margin-left:5px;">🗑️</button>
                         </div>
                     </div>
                 `;
             });
+        };
+
+        window.ajustarCantidad = function(idUnico, cambio) {
+            let index = listaVirtual.findIndex(item => item.idUnico === idUnico);
+            if (index === -1) return;
+            
+            let item = listaVirtual[index];
+            
+            if (cambio === 1) {
+                // Si es un envío, verificamos que quede stock en Santa Cruz antes de sumarle 1
+                if (item.tipoAccion === 'transferir') {
+                    let stockDisponible = obtenerStockVisual(item.idProducto, 'SCZ');
+                    if (stockDisponible < 1) {
+                        alert("No tienes más stock en Producción para enviar de este marco.");
+                        return;
+                    }
+                }
+                item.cantidad += 1;
+            } else if (cambio === -1) {
+                // Si la cantidad llega a 0 al restar, se elimina el ítem de la lista automáticamente
+                if (item.cantidad > 1) {
+                    item.cantidad -= 1;
+                } else {
+                    eliminarDeLista(idUnico);
+                    return; 
+                }
+            }
+            
+            // Guardamos el cambio en la memoria del navegador y refrescamos
+            localStorage.setItem('lista_trabajo_lienzos', JSON.stringify(listaVirtual));
+            renderizarProductos(); // Actualiza el fondo
+            abrirModal(); // Refresca los números del modal instantáneamente
         };
 
         window.cerrarModal = function() { document.getElementById('modal-lista').style.display = 'none'; }
