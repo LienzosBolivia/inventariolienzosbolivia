@@ -294,45 +294,37 @@
 
         window.cerrarModal = function() { document.getElementById('modal-lista').style.display = 'none'; }
 
-        // ==========================================
-        // 6. GENERACIÓN INTELIGENTE (LA MATEMÁTICA)
-        // ==========================================
-        window.generarListaAutomatica = async function() {
+        // =========================================================
+        // 5. MOTOR DE IA HÍBRIDO (Matemática Local + Estrategia Groq)
+        // =========================================================
+        window.generarListaIA = async function() {
+            if (!localStorage.getItem('groq_api_key')) { configurarIA(); return; }
+
             const btnAuto = document.getElementById('btn-auto');
             btnAuto.disabled = true;
-            btnAuto.innerText = "Analizando demanda... ⏳";
+            btnAuto.innerHTML = "🧮 Calculando matemáticas... ⏳";
 
             try {
-                // Descargar el historial de trabajos reales
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ accion: 'obtener_historiales_trabajo' })
-                });
+                // 1. DESCARGAR HISTORIALES
+                const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ accion: 'obtener_historiales_trabajo' }) });
                 const result = await response.json();
-                if (result.status !== "success") throw new Error();
-
+                if (result.status !== "success") throw new Error("No se pudo leer el historial de Drive.");
                 const historiales = result.data;
 
-                // Función interna para calcular cuánto le falta a UNA sucursal
-                function calcularFalta(suc) {
+                // 2. MOTOR MATEMÁTICO DE JAVASCRIPT (Precisión 100%)
+                function calcularFaltaMatematica(suc) {
                     let historial = historiales[suc];
                     if (!historial || historial.length === 0) return {};
 
                     let consumos = {};
                     let fechas = [];
-
-                    // Agrupar historial por modelo_tamano
                     historial.forEach(trabajo => {
                         let id = `${trabajo.modelo}_${trabajo.tamano}`;
-                        if (!consumos[id]) consumos[id] = 0;
-                        consumos[id] += trabajo.copias;
-                        
-                        // Parsear la fecha compatible con todos los navegadores
+                        consumos[id] = (consumos[id] || 0) + trabajo.copias;
                         let fechaLimpia = trabajo.fecha.replace(/-/g, '/');
                         fechas.push(new Date(fechaLimpia));
                     });
 
-                    // Calcular la ventana de tiempo real que abarcan los trabajos
                     let minDate = new Date(Math.min(...fechas));
                     let maxDate = new Date(Math.max(...fechas));
                     let diasTranscurridos = (maxDate - minDate) / (1000 * 60 * 60 * 24);
@@ -340,75 +332,108 @@
 
                     let faltaPorItem = {};
                     for (let id in consumos) {
-                        let demandaDiaria = consumos[id] / diasTranscurridos;
-                        let stockIdeal = Math.ceil(demandaDiaria * DIAS_COLCHON); // Redondear siempre hacia arriba
+                        let demandaDiaria = (consumos[id] / diasTranscurridos) * (multiplicadores[suc] || 1); 
+                        let stockIdeal = Math.ceil(demandaDiaria * DIAS_COLCHON);
                         let stockActual = obtenerStockVisual(id, suc);
-                        
                         let falta = stockIdeal - stockActual;
-                        if (falta > 0) faltaPorItem[id] = falta;
+                        if (falta > 0) faltaPorItem[id] = falta; // Solo guardamos si realmente falta
                     }
                     return faltaPorItem;
                 }
 
-                let itemsAProducirOEnviar = [];
-
+                // 3. CONSOLIDAR EL CÁLCULO
+                let sugerenciaExacta = {};
                 if (sucursalActual !== 'SCZ') {
-                    // Lógica para Envíos: Solo calculamos lo que le falta a la sucursal actual
-                    let falta = calcularFalta(sucursalActual);
-                    for (let id in falta) itemsAProducirOEnviar.push({ id: id, cantidad: falta[id] });
+                    sugerenciaExacta = calcularFaltaMatematica(sucursalActual);
                 } else {
-                    // Lógica de Producción (Maestra): Suma lo que falta en las 3 sucursales
-                    let faltaSCZ = calcularFalta('SCZ');
-                    let faltaLPZ = calcularFalta('LPZ');
-                    let faltaCBA = calcularFalta('CBA');
-
-                    let totalConsolidado = {};
+                    let faltaSCZ = calcularFaltaMatematica('SCZ');
+                    let faltaLPZ = calcularFaltaMatematica('LPZ');
+                    let faltaCBA = calcularFaltaMatematica('CBA');
                     let todosLosIds = new Set([...Object.keys(faltaSCZ), ...Object.keys(faltaLPZ), ...Object.keys(faltaCBA)]);
                     
                     todosLosIds.forEach(id => {
                         let suma = (faltaSCZ[id] || 0) + (faltaLPZ[id] || 0) + (faltaCBA[id] || 0);
-                        if (suma > 0) totalConsolidado[id] = suma;
+                        if (suma > 0) sugerenciaExacta[id] = suma;
                     });
-
-                    for (let id in totalConsolidado) itemsAProducirOEnviar.push({ id: id, cantidad: totalConsolidado[id] });
                 }
 
-                // Meter el resultado directo al carrito
-                if (itemsAProducirOEnviar.length === 0) {
-                    alert("¡El inventario está perfecto! No se necesita producir ni enviar nada por ahora para mantener tus 5 días de colchón.");
-                } else {
-                    itemsAProducirOEnviar.forEach(item => {
-                        // Verifica si ya lo habías agregado a mano para sumar cantidades
-                        let index = listasVirtuales[sucursalActual].findIndex(v => v.idProducto === item.id);
-                        if (index !== -1) {
-                            listasVirtuales[sucursalActual][index].cantidad += item.cantidad;
-                        } else {
-                            let data = baseDatosReal[item.id];
-                            if(data) {
-                                listasVirtuales[sucursalActual].push({
-                                    idUnico: Date.now().toString() + Math.random().toString().substring(2,5),
-                                    idProducto: item.id,
-                                    nombre: data.nombre,
-                                    tamano: data.tamano,
-                                    cantidad: item.cantidad,
-                                    tipoAccion: sucursalActual === 'SCZ' ? 'producir' : 'transferir',
-                                    sucursalDestino: sucursalActual !== 'SCZ' ? sucursalActual : null
-                                });
-                            }
+                if (Object.keys(sugerenciaExacta).length === 0) {
+                    alert("🤖 Matemática y Lógica coinciden: El inventario está perfecto. No se requiere acción.");
+                    return;
+                }
+
+                btnAuto.innerHTML = "🧠 IA optimizando la lista... ⏳";
+
+                // 4. PREPARAR EL CONTEXTO HÍBRIDO PARA LA IA
+                let contextoHibrido = {
+                    sucursalObjetivo: sucursalActual,
+                    calculoMatematicoPerfecto: sugerenciaExacta
+                };
+
+                let promptConfig = `
+Eres el Director de Logística de un taller de enmarcado.
+El sistema informático ya ha hecho el trabajo pesado. Ha analizado los historiales, aplicado los multiplicadores de demanda y calculado exactamente cuántos marcos faltan para cubrir los 5 días de colchón.
+
+Aquí tienes el cálculo matemático perfecto:
+${JSON.stringify(contextoHibrido)}
+
+TU TAREA:
+1. Revisa el "calculoMatematicoPerfecto".
+2. Tu trabajo es aprobar esta lista y darle formato JSON. Si tu inteligencia estratégica considera que algún número debe redondearse ligeramente hacia arriba para optimizar la producción o el empaque, hazlo.
+3. ESTRICTAMENTE PROHIBIDO: No elimines ningún ítem que el sistema haya calculado, y jamás devuelvas cantidades en 0 o negativas.
+
+OBLIGATORIO: Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin formato markdown (\`\`\`), usando esta estructura exacta:
+{"items": [{"idProducto": "A1_16x22", "cantidad": 5}, {"idProducto": "4_30x42", "cantidad": 12}]}
+`;
+                // 5. LLAMAR A GROQ
+                let respuestaIA = await askGroq(promptConfig);
+                
+                // 6. LIMPIAR, PARSEAR Y ESCUDO ANTI-CEROS
+                let jsonLimpio = respuestaIA.replace(/```json/gi, "").replace(/```/gi, "").trim();
+                let plan = JSON.parse(jsonLimpio);
+
+                if (!plan.items || !Array.isArray(plan.items)) throw new Error("La IA no devolvió la estructura correcta.");
+
+                let itemsValidos = plan.items.filter(item => item.cantidad > 0);
+
+                // 7. INYECTAR RESULTADOS AL CARRITO LOCAL
+                itemsValidos.forEach(item => {
+                    let index = listasVirtuales[sucursalActual].findIndex(v => v.idProducto === item.idProducto);
+                    if (index !== -1) {
+                        listasVirtuales[sucursalActual][index].cantidad += item.cantidad;
+                    } else {
+                        let data = baseDatosReal[item.idProducto];
+                        if(data) {
+                            listasVirtuales[sucursalActual].push({
+                                idUnico: Date.now().toString() + Math.random().toString().substring(2,5),
+                                idProducto: item.idProducto,
+                                nombre: data.nombre,
+                                tamano: data.tamano,
+                                cantidad: item.cantidad,
+                                tipoAccion: sucursalActual === 'SCZ' ? 'producir' : 'transferir',
+                                sucursalDestino: sucursalActual !== 'SCZ' ? sucursalActual : null
+                            });
                         }
-                    });
-                    
-                    localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
-                    renderizarProductos();
-                    abrirModal();
-                    mostrarToast('✨ Lista generada inteligentemente');
-                }
+                    }
+                });
+                
+                localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
+                renderizarProductos(); 
+                abrirModal(); 
+                mostrarToast('🤖 Lista Híbrida generada');
 
             } catch (error) {
-                alert("Error al calcular la demanda. Verifica tu conexión a internet.");
+                console.error(error);
+                if (error.message.startsWith("API_KEY_MISSING")) return;
+                if (error.message.startsWith("API_KEY_ERROR")) {
+                    alert("⚠️ Groq rechazó la conexión.\n\nDetalle: " + error.message.split("|")[1] + "\nLa clave se ha borrado.");
+                    localStorage.removeItem('groq_api_key');
+                } else {
+                    alert("⚠️ Error en el análisis de IA:\n" + error.message);
+                }
             } finally {
                 btnAuto.disabled = false;
-                btnAuto.innerText = "🪄 Generar Lista Automática";
+                btnAuto.innerHTML = "🤖 Que la IA genere la lista";
             }
         };
 		
