@@ -55,6 +55,8 @@
         .btn-subir-lote:disabled { background: #94a3b8; }
         .btn-auto { width: 100%; background: #8b5cf6; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
         .btn-auto:disabled { background: #cbd5e1; }
+		.btn-exportar { width: 100%; background: #f59e0b; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 10px; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        .btn-exportar:active { background: #d97706; transform: scale(0.98); }
         
         .cart-badge { background: #ef4444; color: white; border-radius: 50%; padding: 2px 6px; font-size: 12px; position: absolute; margin-top: -10px; margin-left: -5px; }
     </style>
@@ -85,7 +87,9 @@
             <div class="historial-lista" id="lista-trabajo-ui"></div>
             
             <!-- Nuevos botones del Modal -->
-            <button class="btn-auto" id="btn-auto" onclick="generarListaAutomatica()">🪄 Generar Lista Automática</button>
+            <button class="btn-exportar" onclick="exportarLista()">📥 Exportar Lista a TXT</button>
+            
+            <button class="btn-auto" id="btn-auto" onclick="generarListaIA()">🤖 Que la IA genere la lista</button>
             <button class="btn-subir-lote" id="btn-subir" onclick="subirListaADrive()">🚀 Subir a Drive</button>
         </div>
     </div>
@@ -406,6 +410,57 @@
                 btnAuto.disabled = false;
                 btnAuto.innerText = "🪄 Generar Lista Automática";
             }
+        };
+		
+		// ==========================================
+        // EXPORTAR LISTA LOCAL A ARCHIVO DE TEXTO
+        // ==========================================
+        window.exportarLista = function() {
+            let lista = listasVirtuales[sucursalActual];
+            
+            if (lista.length === 0) {
+                alert("La lista está vacía. Agrega marcos antes de exportar.");
+                return;
+            }
+
+            // Generar fecha y hora para el título
+            let fecha = new Date().toLocaleDateString('es-BO');
+            let hora = new Date().toLocaleTimeString('es-BO', {hour: '2-digit', minute:'2-digit'});
+            
+            // Formatear el texto
+            let titulo = sucursalActual === 'SCZ' ? '🛠️ LISTA DE PRODUCCIÓN (SCZ)' : `📦 LISTA DE ENVÍO A ${sucursalActual}`;
+            let contenidoText = `${titulo}\n`;
+            contenidoText += `📅 Fecha: ${fecha} - ⏰ ${hora}\n`;
+            contenidoText += `----------------------------------------\n\n`;
+
+            let totalMarcos = 0;
+
+            // Recorrer la lista y armar el documento
+            lista.slice().reverse().forEach(item => {
+                contenidoText += `✅ ${item.cantidad}x - ${item.nombre} (${item.tamano.replace('x', '*')})\n`;
+                totalMarcos += item.cantidad;
+            });
+
+            contenidoText += `\n----------------------------------------\n`;
+            contenidoText += `Total de marcos: ${totalMarcos}\n`;
+            contenidoText += `Generado por Inventario Virtual Lienzos`;
+
+            // Crear el archivo virtual y forzar la descarga en el navegador
+            const blob = new Blob([contenidoText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            // Nombre del archivo con la fecha, ej: Lista_SCZ_02-08-2026.txt
+            a.download = `Lista_${sucursalActual}_${fecha.replace(/\//g, '-')}.txt`; 
+            
+            document.body.appendChild(a);
+            a.click(); // Simula el clic de descarga
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); // Limpia la memoria del celular
+            
+            mostrarToast('📥 Lista descargada');
         };
 
         window.subirListaADrive = async function() {
