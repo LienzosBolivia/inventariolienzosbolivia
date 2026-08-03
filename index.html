@@ -386,23 +386,52 @@
 
                     let consumos = {};
                     let fechas = [];
+                    
                     historial.forEach(trabajo => {
                         let id = `${trabajo.modelo}_${trabajo.tamano}`;
                         consumos[id] = (consumos[id] || 0) + trabajo.copias;
-                        let fechaLimpia = trabajo.fecha.replace(/-/g, '/');
-                        fechas.push(new Date(fechaLimpia));
+                        
+                        // --- NUEVO PARSEADOR DE FECHAS BILINGÜE ---
+                        let fStr = trabajo.fecha || "";
+                        let fechaValida;
+                        
+                        if (fStr.includes('/')) {
+                            // Si viene con barras (Ej: 29/04/2026 o 2026/07/15)
+                            let partes = fStr.split(' ')[0].split('/');
+                            if (partes[0].length === 2 && partes[2] && partes[2].length === 4) {
+                                // Es DD/MM/YYYY, lo volteamos a YYYY/MM/DD para que JS lo entienda
+                                fechaValida = new Date(`${partes[2]}/${partes[1]}/${partes[0]}`);
+                            } else {
+                                fechaValida = new Date(fStr.replace(/-/g, '/'));
+                            }
+                        } else {
+                            // Si viene con guiones (Ej: 2026-07-15)
+                            fechaValida = new Date(fStr.replace(/-/g, '/'));
+                        }
+
+                        // Solo guardamos la fecha si es válida matemáticamente
+                        if (fechaValida && !isNaN(fechaValida.getTime())) {
+                            fechas.push(fechaValida);
+                        }
                     });
+
+                    // Si no logró leer ni una sola fecha, cancela el cálculo para evitar el error NaN
+                    if (fechas.length === 0) return {}; 
 
                     let minDate = new Date(Math.min(...fechas));
                     let maxDate = new Date(Math.max(...fechas));
                     let diasTranscurridos = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+                    
+                    // Prevenir división por cero si todos los trabajos se hicieron el mismo día
                     diasTranscurridos = diasTranscurridos < 1 ? 1 : diasTranscurridos; 
 
                     let faltaPorItem = {};
                     for (let id in consumos) {
+                        // AQUÍ APLICA EL MULTIPLICADOR CON NÚMEROS REALES, NO ERRORES
                         let demandaDiaria = (consumos[id] / diasTranscurridos) * (multiplicadores[suc] || 1); 
                         let stockIdeal = Math.ceil(demandaDiaria * DIAS_COLCHON);
                         let stockActual = obtenerStockVisual(id, suc);
+                        
                         let falta = stockIdeal - stockActual;
                         if (falta > 0) faltaPorItem[id] = falta; 
                     }
