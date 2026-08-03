@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Inventario Virtual - Lienzos</title>
+    <title>Inventario Inteligente - Lienzos</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f0f2f5; overflow-y: hidden; }
         
@@ -51,12 +51,14 @@
         .h-tipo { font-size: 12px; font-weight: bold; color: #64748b; }
         .h-qty { color: #059669; font-weight: 900; font-size: 20px; }
         
+        /* Botones del Modal */
+        .btn-exportar { width: 100%; background: #f59e0b; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 10px; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        .btn-exportar:active { background: #d97706; transform: scale(0.98); }
         .btn-subir-lote { width: 100%; background: #10b981; color: white; border: none; padding: 15px; font-size: 20px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-top: 10px; }
         .btn-subir-lote:disabled { background: #94a3b8; }
-        .btn-auto { width: 100%; background: #8b5cf6; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .btn-auto { width: 100%; background: #8b5cf6; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); display: flex; justify-content: center; align-items: center; gap: 8px;}
         .btn-auto:disabled { background: #cbd5e1; }
-		.btn-exportar { width: 100%; background: #f59e0b; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 10px; display: flex; justify-content: center; align-items: center; gap: 8px;}
-        .btn-exportar:active { background: #d97706; transform: scale(0.98); }
+        .btn-ai-config { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; cursor: pointer; width: 100%; font-weight: bold;}
         
         .cart-badge { background: #ef4444; color: white; border-radius: 50%; padding: 2px 6px; font-size: 12px; position: absolute; margin-top: -10px; margin-left: -5px; }
     </style>
@@ -84,11 +86,14 @@
                 <h2>Lista Pendiente</h2>
                 <button class="close-modal" onclick="cerrarModal()">X</button>
             </div>
+            
             <div class="historial-lista" id="lista-trabajo-ui"></div>
             
-            <!-- Nuevos botones del Modal -->
+            <!-- PANEL MULTIPLICADORES -->
+            <div id="panel-multiplicadores"></div>
+
             <button class="btn-exportar" onclick="exportarLista()">📥 Exportar Lista a TXT</button>
-            
+            <button class="btn-ai-config" onclick="configurarIA()">⚙️ Configurar API Key de Groq</button>
             <button class="btn-auto" id="btn-auto" onclick="generarListaIA()">🤖 Que la IA genere la lista</button>
             <button class="btn-subir-lote" id="btn-subir" onclick="subirListaADrive()">🚀 Subir a Drive</button>
         </div>
@@ -102,13 +107,14 @@
         
         const TAMANOS = ['16x22', '20x27', '30x42', '50x40', '50x60', '60x80'];
         const MODELOS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', '3', '4']; 
-        const DIAS_COLCHON = 5; // Configuración de tus días de seguridad
+        const DIAS_COLCHON = 5; 
         
         let sucursalActual = 'SCZ'; 
         let baseDatosReal = {}; 
         let listasVirtuales = JSON.parse(localStorage.getItem('listas_trabajo_lienzos')) || { 'SCZ': [], 'LPZ': [], 'CBA': [] };
+        let multiplicadores = JSON.parse(localStorage.getItem('multiplicadores_lienzos')) || { 'SCZ': 1.0, 'LPZ': 1.0, 'CBA': 1.0 };
         
-        // 1. CARGA INICIAL
+        // --- 1. CARGA INICIAL ---
         async function cargarInventario() {
             try {
                 const response = await fetch(SCRIPT_URL); 
@@ -120,7 +126,7 @@
         }
         setInterval(cargarInventario, 10000); 
 
-        // 2. MATEMÁTICA VISUAL 
+        // --- 2. MATEMÁTICA VISUAL ---
         function obtenerStockVisual(idProducto, sucursal) {
             let real = baseDatosReal[idProducto] ? (baseDatosReal[idProducto][sucursal] || 0) : 0;
             for (let suc in listasVirtuales) {
@@ -138,7 +144,7 @@
             return real;
         }
 
-        // 3. INTERFAZ
+        // --- 3. INTERFAZ ---
         function inicializarPantalla() {
             const carousel = document.getElementById('carousel');
             carousel.innerHTML = '';
@@ -162,11 +168,9 @@
                 MODELOS.forEach(modelo => {
                     let id = `${modelo}_${tamano}`; 
                     let data = baseDatosReal[id];
-                    
                     if(data) {
                         let qtyVisual = obtenerStockVisual(id, sucursalActual); 
                         let qtyVisualSCZ = obtenerStockVisual(id, 'SCZ'); 
-
                         let btnText = sucursalActual === 'SCZ' ? "+ Lista" : "+ Enviar";
                         let colorBtn = sucursalActual === 'SCZ' ? "#059669" : "#2563eb";
                         let infoExtra = sucursalActual !== 'SCZ' ? `<div style="font-size:12px; color:#ef4444; margin-top:3px;">Disp. Prod: ${qtyVisualSCZ}</div>` : '';
@@ -182,9 +186,7 @@
                             </div>
                             <div class="add-controls">
                                 <input type="number" id="input-${id}" placeholder="Cant." min="1" inputmode="numeric">
-                                <button class="action-btn" style="background:${colorBtn}" onclick="agregarALista('${id}', '${data.nombre}', '${tamano}')">
-                                    ${btnText}
-                                </button>
+                                <button class="action-btn" style="background:${colorBtn}" onclick="agregarALista('${id}', '${data.nombre}', '${tamano}')">${btnText}</button>
                             </div>
                         </div>`;
                         container.insertAdjacentHTML('beforeend', itemHTML);
@@ -194,109 +196,177 @@
             actualizarBurbuja();
         }
 
-        // 4. EL CARRITO
+        // --- 4. CARRITO Y CONTROLES ---
         window.agregarALista = function(idProducto, nombre, tamano) {
             const input = document.getElementById(`input-${idProducto}`);
             const cantidad = parseInt(input.value);
-
             if (!cantidad || cantidad <= 0) return;
 
             if (sucursalActual !== 'SCZ') {
                 let stockEnSCZ = obtenerStockVisual(idProducto, 'SCZ');
-                if (stockEnSCZ < cantidad) {
-                    alert("No tienes suficiente stock en Producción para enviar esta cantidad.");
-                    return;
-                }
+                if (stockEnSCZ < cantidad) { alert("Stock insuficiente en Producción."); return; }
             }
 
             listasVirtuales[sucursalActual].push({
-                idUnico: Date.now().toString(),
-                idProducto: idProducto,
-                nombre: nombre,
-                tamano: tamano,
-                cantidad: cantidad,
-                tipoAccion: sucursalActual === 'SCZ' ? 'producir' : 'transferir',
-                sucursalDestino: sucursalActual !== 'SCZ' ? sucursalActual : null
+                idUnico: Date.now().toString(), idProducto: idProducto, nombre: nombre, tamano: tamano, cantidad: cantidad,
+                tipoAccion: sucursalActual === 'SCZ' ? 'producir' : 'transferir', sucursalDestino: sucursalActual !== 'SCZ' ? sucursalActual : null
             });
-
             localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
-            input.value = '';
-            renderizarProductos(); 
-            mostrarToast('✅ Agregado a la lista');
+            input.value = ''; renderizarProductos(); mostrarToast('✅ Agregado a la lista');
         };
 
         window.eliminarDeLista = function(idUnico) {
             listasVirtuales[sucursalActual] = listasVirtuales[sucursalActual].filter(item => item.idUnico !== idUnico);
             localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
-            renderizarProductos();
-            abrirModal(); 
+            renderizarProductos(); abrirModal(); 
         };
 
         window.ajustarCantidad = function(idUnico, cambio) {
             let index = listasVirtuales[sucursalActual].findIndex(item => item.idUnico === idUnico);
             if (index === -1) return;
-            
             let item = listasVirtuales[sucursalActual][index];
             if (cambio === 1) {
-                if (item.tipoAccion === 'transferir') {
-                    if (obtenerStockVisual(item.idProducto, 'SCZ') < 1) {
-                        alert("No tienes más stock en Producción para enviar."); return;
-                    }
+                if (item.tipoAccion === 'transferir' && obtenerStockVisual(item.idProducto, 'SCZ') < 1) {
+                    alert("Stock insuficiente en Producción."); return;
                 }
                 item.cantidad += 1;
             } else if (cambio === -1) {
-                if (item.cantidad > 1) item.cantidad -= 1;
-                else { eliminarDeLista(idUnico); return; }
+                if (item.cantidad > 1) item.cantidad -= 1; else { eliminarDeLista(idUnico); return; }
             }
-            
             localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
-            renderizarProductos(); 
-            abrirModal(); 
+            renderizarProductos(); abrirModal(); 
         };
 
-        // 5. MODAL UI
+        window.cambiarMultiplicador = function(suc, obj) {
+            let val = parseFloat(obj.value);
+            if (val > 0) {
+                multiplicadores[suc] = val;
+                localStorage.setItem('multiplicadores_lienzos', JSON.stringify(multiplicadores));
+            }
+        };
+
         window.abrirModal = function() {
             document.getElementById('modal-lista').style.display = 'flex';
             const contenedor = document.getElementById('lista-trabajo-ui');
+            const panelMultiplicadores = document.getElementById('panel-multiplicadores');
             const btnSubir = document.getElementById('btn-subir');
-            
             document.querySelector('.modal-header h2').innerText = `Lista Pendiente (${sucursalActual})`;
 
-            if (listasVirtuales[sucursalActual].length === 0) {
-                contenedor.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8; font-style:italic;">Tu lista de trabajo está vacía. Usa el botón mágico para autocompletar.</div>';
-                btnSubir.disabled = true;
-                return;
+            // DIBUJAR CONTROLES DE MULTIPLICADOR
+            if (sucursalActual === 'SCZ') {
+                panelMultiplicadores.innerHTML = `
+                    <div style="background:#f8fafc; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px solid #e2e8f0;">
+                        <div style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:8px; text-align:center;">AJUSTE DE DEMANDA (MULTIPLICADOR x)</div>
+                        <div style="display:flex; justify-content:space-between; gap:5px;">
+                            <div style="text-align:center;"><label style="font-size:11px; font-weight:bold;">SCZ</label><br><input type="number" step="0.1" min="0.1" value="${multiplicadores['SCZ']}" onchange="cambiarMultiplicador('SCZ', this)" style="width:100%; height:30px; text-align:center; font-weight:bold; border-radius:4px; border:1px solid #cbd5e1;"></div>
+                            <div style="text-align:center;"><label style="font-size:11px; font-weight:bold;">LPZ</label><br><input type="number" step="0.1" min="0.1" value="${multiplicadores['LPZ']}" onchange="cambiarMultiplicador('LPZ', this)" style="width:100%; height:30px; text-align:center; font-weight:bold; border-radius:4px; border:1px solid #cbd5e1;"></div>
+                            <div style="text-align:center;"><label style="font-size:11px; font-weight:bold;">CBA</label><br><input type="number" step="0.1" min="0.1" value="${multiplicadores['CBA']}" onchange="cambiarMultiplicador('CBA', this)" style="width:100%; height:30px; text-align:center; font-weight:bold; border-radius:4px; border:1px solid #cbd5e1;"></div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                panelMultiplicadores.innerHTML = `
+                    <div style="background:#f8fafc; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:13px; font-weight:bold; color:#64748b;">Multiplicador de Demanda (${sucursalActual}):</span>
+                        <input type="number" step="0.1" min="0.1" value="${multiplicadores[sucursalActual]}" onchange="cambiarMultiplicador('${sucursalActual}', this)" style="width:70px; height:35px; text-align:center; font-weight:bold; border-radius:6px; border:1px solid #cbd5e1;">
+                    </div>
+                `;
             }
 
-            btnSubir.disabled = false;
+            if (listasVirtuales[sucursalActual].length === 0) {
+                contenedor.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8; font-style:italic;">Tu lista de trabajo está vacía. Usa la IA para autocompletar.</div>';
+                btnSubir.disabled = true; return;
+            }
+            
+            btnSubir.disabled = false; 
             contenedor.innerHTML = '';
             
             listasVirtuales[sucursalActual].slice().reverse().forEach(item => {
                 let colorClase = item.tipoAccion === 'producir' ? 'produccion' : '';
                 let textoTipo = item.tipoAccion === 'producir' ? 'PRODUCCIÓN' : `ENVÍO A ${item.sucursalDestino}`;
-                
                 contenedor.innerHTML += `
                     <div class="history-item ${colorClase}">
-                        <div>
-                            <div class="h-name">${item.nombre} (${item.tamano.replace('x','*')})</div>
-                            <div class="h-tipo">${textoTipo}</div>
-                        </div>
+                        <div><div class="h-name">${item.nombre} (${item.tamano.replace('x','*')})</div><div class="h-tipo">${textoTipo}</div></div>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <button onclick="ajustarCantidad('${item.idUnico}', -1)" style="background:#e2e8f0; color:#475569; border:none; padding:5px 12px; border-radius:6px; font-size:18px; font-weight:bold; cursor:pointer;">-</button>
+                            <button onclick="ajustarCantidad('${item.idUnico}', -1)" style="background:#e2e8f0; border:none; padding:5px 12px; border-radius:6px; font-weight:bold;">-</button>
                             <span class="h-qty" style="min-width:30px; text-align:center;">${item.cantidad}</span>
-                            <button onclick="ajustarCantidad('${item.idUnico}', 1)" style="background:#e2e8f0; color:#475569; border:none; padding:5px 12px; border-radius:6px; font-size:18px; font-weight:bold; cursor:pointer;">+</button>
-                            <button onclick="eliminarDeLista('${item.idUnico}')" style="background:none; border:none; padding:5px; font-size:22px; cursor:pointer; margin-left:5px;">🗑️</button>
+                            <button onclick="ajustarCantidad('${item.idUnico}', 1)" style="background:#e2e8f0; border:none; padding:5px 12px; border-radius:6px; font-weight:bold;">+</button>
+                            <button onclick="eliminarDeLista('${item.idUnico}')" style="background:none; border:none; padding:5px; font-size:22px; margin-left:5px;">🗑️</button>
                         </div>
                     </div>
                 `;
             });
         };
-
         window.cerrarModal = function() { document.getElementById('modal-lista').style.display = 'none'; }
 
-        // =========================================================
-        // 5. MOTOR DE IA HÍBRIDO (Matemática Local + Estrategia Groq)
-        // =========================================================
+        // --- 5. EXPORTAR A TXT ---
+        window.exportarLista = function() {
+            let lista = listasVirtuales[sucursalActual];
+            if (lista.length === 0) { alert("La lista está vacía."); return; }
+
+            let fecha = new Date().toLocaleDateString('es-BO');
+            let hora = new Date().toLocaleTimeString('es-BO', {hour: '2-digit', minute:'2-digit'});
+            let titulo = sucursalActual === 'SCZ' ? '🛠️ LISTA DE PRODUCCIÓN (SCZ)' : `📦 LISTA DE ENVÍO A ${sucursalActual}`;
+            
+            let contenidoText = `${titulo}\n📅 Fecha: ${fecha} - ⏰ ${hora}\n----------------------------------------\n\n`;
+            let totalMarcos = 0;
+
+            lista.slice().reverse().forEach(item => {
+                contenidoText += `✅ ${item.cantidad}x - ${item.nombre} (${item.tamano.replace('x', '*')})\n`;
+                totalMarcos += item.cantidad;
+            });
+
+            contenidoText += `\n----------------------------------------\nTotal de marcos: ${totalMarcos}\nGenerado por Inventario Virtual Lienzos`;
+
+            const blob = new Blob([contenidoText], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Lista_${sucursalActual}_${fecha.replace(/\//g, '-')}.txt`; 
+            document.body.appendChild(a);
+            a.click(); 
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url); 
+            mostrarToast('📥 Lista descargada');
+        };
+
+        // --- 6. MOTOR DE IA (CONFIGURACIÓN Y CONEXIÓN) ---
+        window.configurarIA = function() {
+            var key = prompt("🤖 Configuración de IA (Groq)\nPega tu API Key de Groq aquí (empieza con 'gsk_'):");
+            if (key && key.trim()) {
+                localStorage.setItem('groq_api_key', key.trim());
+                alert("✅ API Key guardada en tu navegador.");
+            }
+        };
+
+        async function askGroq(promptTxt) {
+            let groqApiKey = localStorage.getItem('groq_api_key');
+            if (!groqApiKey) throw new Error("API_KEY_MISSING");
+
+            let modelsRes = await fetch("https://api.groq.com/openai/v1/models", { headers: { "Authorization": "Bearer " + groqApiKey } });
+            if (!modelsRes.ok) throw new Error("API_KEY_ERROR|Clave inválida al verificar modelos.");
+            
+            let modelsData = await modelsRes.json();
+            let modelToUse = "llama-3.3-70b-versatile"; 
+            if (modelsData && modelsData.data && modelsData.data.length > 0) {
+               let llamaModels = modelsData.data.filter(m => m.id.toLowerCase().includes("llama"));
+               if (llamaModels.length > 0) {
+                   let model70b = llamaModels.find(m => m.id.includes("70b"));
+                   modelToUse = model70b ? model70b.id : llamaModels[0].id;
+               } else modelToUse = modelsData.data[0].id;
+            }
+
+            let res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + groqApiKey },
+              body: JSON.stringify({ model: modelToUse, messages: [{ role: "user", content: promptTxt }], temperature: 0.2 }) 
+            });
+            
+            if (!res.ok) throw new Error("API_KEY_ERROR|La API Key fue rechazada.");
+            let data = await res.json();
+            return data.choices[0].message.content;
+        }
+
+        // --- 7. MOTOR IA HÍBRIDO (El cerebro final) ---
         window.generarListaIA = async function() {
             if (!localStorage.getItem('groq_api_key')) { configurarIA(); return; }
 
@@ -305,13 +375,11 @@
             btnAuto.innerHTML = "🧮 Calculando matemáticas... ⏳";
 
             try {
-                // 1. DESCARGAR HISTORIALES
                 const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ accion: 'obtener_historiales_trabajo' }) });
                 const result = await response.json();
                 if (result.status !== "success") throw new Error("No se pudo leer el historial de Drive.");
                 const historiales = result.data;
 
-                // 2. MOTOR MATEMÁTICO DE JAVASCRIPT (Precisión 100%)
                 function calcularFaltaMatematica(suc) {
                     let historial = historiales[suc];
                     if (!historial || historial.length === 0) return {};
@@ -336,12 +404,11 @@
                         let stockIdeal = Math.ceil(demandaDiaria * DIAS_COLCHON);
                         let stockActual = obtenerStockVisual(id, suc);
                         let falta = stockIdeal - stockActual;
-                        if (falta > 0) faltaPorItem[id] = falta; // Solo guardamos si realmente falta
+                        if (falta > 0) faltaPorItem[id] = falta; 
                     }
                     return faltaPorItem;
                 }
 
-                // 3. CONSOLIDAR EL CÁLCULO
                 let sugerenciaExacta = {};
                 if (sucursalActual !== 'SCZ') {
                     sugerenciaExacta = calcularFaltaMatematica(sucursalActual);
@@ -359,36 +426,28 @@
 
                 if (Object.keys(sugerenciaExacta).length === 0) {
                     alert("🤖 Matemática y Lógica coinciden: El inventario está perfecto. No se requiere acción.");
+                    btnAuto.disabled = false;
+                    btnAuto.innerHTML = "🤖 Que la IA genere la lista";
                     return;
                 }
 
                 btnAuto.innerHTML = "🧠 IA optimizando la lista... ⏳";
 
-                // 4. PREPARAR EL CONTEXTO HÍBRIDO PARA LA IA
-                let contextoHibrido = {
-                    sucursalObjetivo: sucursalActual,
-                    calculoMatematicoPerfecto: sugerenciaExacta
-                };
+                let contextoHibrido = { sucursalObjetivo: sucursalActual, calculoMatematicoPerfecto: sugerenciaExacta };
 
                 let promptConfig = `
-Eres el Director de Logística de un taller de enmarcado.
-El sistema informático ya ha hecho el trabajo pesado. Ha analizado los historiales, aplicado los multiplicadores de demanda y calculado exactamente cuántos marcos faltan para cubrir los 5 días de colchón.
-
-Aquí tienes el cálculo matemático perfecto:
-${JSON.stringify(contextoHibrido)}
+Eres el Director de Logística. El sistema informático ya ha hecho el cálculo exacto de cuánto falta para cubrir 5 días de colchón.
+Cálculo exacto: ${JSON.stringify(contextoHibrido)}
 
 TU TAREA:
 1. Revisa el "calculoMatematicoPerfecto".
-2. Tu trabajo es aprobar esta lista y darle formato JSON. Si tu inteligencia estratégica considera que algún número debe redondearse ligeramente hacia arriba para optimizar la producción o el empaque, hazlo.
-3. ESTRICTAMENTE PROHIBIDO: No elimines ningún ítem que el sistema haya calculado, y jamás devuelvas cantidades en 0 o negativas.
+2. Aprueba esta lista dándole formato JSON. Si consideras que algún número debe redondearse ligeramente hacia arriba para optimizar, hazlo.
+3. ESTRICTAMENTE PROHIBIDO: Eliminar ítems o devolver cantidades en 0 o negativas.
 
 OBLIGATORIO: Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin formato markdown (\`\`\`), usando esta estructura exacta:
-{"items": [{"idProducto": "A1_16x22", "cantidad": 5}, {"idProducto": "4_30x42", "cantidad": 12}]}
+{"items": [{"idProducto": "A1_16x22", "cantidad": 5}]}
 `;
-                // 5. LLAMAR A GROQ
                 let respuestaIA = await askGroq(promptConfig);
-                
-                // 6. LIMPIAR, PARSEAR Y ESCUDO ANTI-CEROS
                 let jsonLimpio = respuestaIA.replace(/```json/gi, "").replace(/```/gi, "").trim();
                 let plan = JSON.parse(jsonLimpio);
 
@@ -396,7 +455,6 @@ OBLIGATORIO: Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin formato markdow
 
                 let itemsValidos = plan.items.filter(item => item.cantidad > 0);
 
-                // 7. INYECTAR RESULTADOS AL CARRITO LOCAL
                 itemsValidos.forEach(item => {
                     let index = listasVirtuales[sucursalActual].findIndex(v => v.idProducto === item.idProducto);
                     if (index !== -1) {
@@ -436,97 +494,27 @@ OBLIGATORIO: Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin formato markdow
                 btnAuto.innerHTML = "🤖 Que la IA genere la lista";
             }
         };
-		
-		// ==========================================
-        // EXPORTAR LISTA LOCAL A ARCHIVO DE TEXTO
-        // ==========================================
-        window.exportarLista = function() {
-            let lista = listasVirtuales[sucursalActual];
-            
-            if (lista.length === 0) {
-                alert("La lista está vacía. Agrega marcos antes de exportar.");
-                return;
-            }
-
-            // Generar fecha y hora para el título
-            let fecha = new Date().toLocaleDateString('es-BO');
-            let hora = new Date().toLocaleTimeString('es-BO', {hour: '2-digit', minute:'2-digit'});
-            
-            // Formatear el texto
-            let titulo = sucursalActual === 'SCZ' ? '🛠️ LISTA DE PRODUCCIÓN (SCZ)' : `📦 LISTA DE ENVÍO A ${sucursalActual}`;
-            let contenidoText = `${titulo}\n`;
-            contenidoText += `📅 Fecha: ${fecha} - ⏰ ${hora}\n`;
-            contenidoText += `----------------------------------------\n\n`;
-
-            let totalMarcos = 0;
-
-            // Recorrer la lista y armar el documento
-            lista.slice().reverse().forEach(item => {
-                contenidoText += `✅ ${item.cantidad}x - ${item.nombre} (${item.tamano.replace('x', '*')})\n`;
-                totalMarcos += item.cantidad;
-            });
-
-            contenidoText += `\n----------------------------------------\n`;
-            contenidoText += `Total de marcos: ${totalMarcos}\n`;
-            contenidoText += `Generado por Inventario Virtual Lienzos`;
-
-            // Crear el archivo virtual y forzar la descarga en el navegador
-            const blob = new Blob([contenidoText], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            // Nombre del archivo con la fecha, ej: Lista_SCZ_02-08-2026.txt
-            a.download = `Lista_${sucursalActual}_${fecha.replace(/\//g, '-')}.txt`; 
-            
-            document.body.appendChild(a);
-            a.click(); // Simula el clic de descarga
-            
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url); // Limpia la memoria del celular
-            
-            mostrarToast('📥 Lista descargada');
-        };
 
         window.subirListaADrive = async function() {
             const btn = document.getElementById('btn-subir');
-            btn.disabled = true;
-            btn.innerText = "Sincronizando con Drive... ⏳";
-
+            btn.disabled = true; btn.innerText = "Sincronizando... ⏳";
             try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ accion: 'procesar_lote', lote: listasVirtuales[sucursalActual] })
-                });
+                const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ accion: 'procesar_lote', lote: listasVirtuales[sucursalActual] }) });
                 const result = await response.json();
-
                 if (result.status === "success") {
-                    baseDatosReal = result.data; 
-                    listasVirtuales[sucursalActual] = []; 
+                    baseDatosReal = result.data; listasVirtuales[sucursalActual] = []; 
                     localStorage.setItem('listas_trabajo_lienzos', JSON.stringify(listasVirtuales));
-                    
-                    renderizarProductos();
-                    cerrarModal();
-                    alert("¡Los datos se han guardado exitosamente en Drive!");
-                } else {
-                    alert(result.message);
-                }
-            } catch (error) {
-                alert("Error de conexión al subir la lista.");
-            } finally {
-                btn.innerText = "🚀 Subir a Drive";
-            }
+                    renderizarProductos(); cerrarModal(); alert("¡Guardado en Drive!");
+                } else alert(result.message);
+            } catch (error) { alert("Error de conexión."); } 
+            finally { btn.innerText = "🚀 Subir a Drive"; btn.disabled = false;}
         };
 
         function actualizarBurbuja() {
             const badge = document.getElementById('cart-counter');
-            let cantidadActual = listasVirtuales[sucursalActual].length;
-            if (cantidadActual > 0) {
-                badge.style.display = 'inline-block';
-                badge.innerText = cantidadActual;
-            } else {
-                badge.style.display = 'none';
-            }
+            let cant = listasVirtuales[sucursalActual].length;
+            if (cant > 0) { badge.style.display = 'inline-block'; badge.innerText = cant; } 
+            else badge.style.display = 'none';
         }
 
         window.cambiarSucursal = function(sucursal) {
@@ -539,10 +527,8 @@ OBLIGATORIO: Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin formato markdow
         };
 
         function mostrarToast(msg) {
-            const toast = document.getElementById('toast');
-            toast.innerText = msg;
-            toast.style.display = 'block';
-            setTimeout(() => { toast.style.display = 'none'; }, 2000);
+            const toast = document.getElementById('toast'); toast.innerText = msg;
+            toast.style.display = 'block'; setTimeout(() => { toast.style.display = 'none'; }, 2000);
         }
 
         window.onload = cargarInventario;
